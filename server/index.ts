@@ -290,6 +290,80 @@ app.post("/api/workspace", async (req, res) => {
   }
 });
 
+// Sync PR Status
+app.post("/api/workspace/sync", async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.session.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (!req.session.accessToken) {
+      return res.status(401).json({ error: "No GitHub token" });
+    }
+
+    const cards = await prisma.workspaceCard.findMany({ where: { userId: user.id } });
+    let updatedCount = 0;
+
+    for (const card of cards) {
+      const q = encodeURIComponent(`is:pr author:${user.username} repo:${card.repository} ${card.githubIssueId}`);
+      const searchUrl = `https://api.github.com/search/issues?q=${q}`;
+      
+      const ghRes = await fetch(searchUrl, {
+        headers: {
+          Authorization: `token ${req.session.accessToken}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "ContribHQ"
+        }
+      });
+
+      if (!ghRes.ok) {
+        console.error("GitHub API Error syncing PR:", await ghRes.text());
+        continue;
+      }
+
+      const data = await ghRes.json();
+      const prs = data.items || [];
+      
+      let prNumber = null;
+      let prUrl = null;
+      let prState = null;
+      let newStatus = card.status;
+
+      if (prs.length > 0) {
+        const pr = prs[0]; 
+        prNumber = pr.number;
+        prUrl = pr.pull_request?.html_url || pr.html_url;
+        prState = pr.pull_request?.merged_at ? "merged" : pr.state; 
+        
+        if (prState === "merged") newStatus = "MERGED";
+        else if (prState === "open") newStatus = "REVIEW";
+        else if (prState === "closed") newStatus = "IN_PROGRESS";
+      } else {
+        if (card.status === "REVIEW" || card.status === "MERGED") {
+          newStatus = "IN_PROGRESS";
+        }
+      }
+
+      await prisma.workspaceCard.update({
+        where: { id: card.id },
+        data: {
+          prNumber,
+          prUrl,
+          prState,
+          status: newStatus
+        }
+      });
+      updatedCount++;
+    }
+
+    res.json({ success: true, count: updatedCount });
+  } catch (err) {
+    console.error("Sync error:", err);
+    res.status(500).json({ error: "Failed to sync PR status" });
+  }
+});
+
 // List Workspace Issues
 app.get("/api/workspace", async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });

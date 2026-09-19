@@ -37,6 +37,9 @@ model WorkspaceCard {
   category      String?
   language      String?
   status        CardStatus @default(TODO)
+  prNumber      Int?
+  prUrl         String?
+  prState       String?
   
   userId        String
   user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)

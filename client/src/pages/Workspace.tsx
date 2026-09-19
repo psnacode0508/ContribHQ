@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { GitFork, Trash2, ArrowRight, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
+import { GitFork, Trash2, ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 type CardStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'MERGED';
 
@@ -13,6 +13,9 @@ interface WorkspaceCard {
   category?: string;
   language?: string;
   status: CardStatus;
+  prNumber?: number;
+  prUrl?: string;
+  prState?: string;
   createdAt: string;
 }
 
@@ -27,6 +30,23 @@ export default function Workspace() {
   const [cards, setCards] = useState<WorkspaceCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('http://localhost:5000/api/workspace/sync', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error('Failed to sync PR status');
+      await fetchWorkspace();
+    } catch (err) {
+      alert('Failed to sync PR status');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     fetchWorkspace();
@@ -116,13 +136,23 @@ export default function Workspace() {
 
   return (
     <div className="pb-12 h-full flex flex-col">
-      <div className="mb-8 shrink-0">
-        <h2 className="text-2xl font-bold leading-7 text-white sm:truncate sm:text-3xl sm:tracking-tight">
-          My Workspace
-        </h2>
-        <p className="mt-1 text-sm text-gray-400">
-          Track issues you are working on. Move them across the board as you progress.
-        </p>
+      <div className="mb-8 shrink-0 flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold leading-7 text-white sm:truncate sm:text-3xl sm:tracking-tight">
+            My Workspace
+          </h2>
+          <p className="mt-1 text-sm text-gray-400">
+            Track issues you are working on. Move them across the board as you progress.
+          </p>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="flex items-center px-4 py-2 bg-gray-800 text-sm font-medium text-white rounded-md hover:bg-gray-700 disabled:opacity-50 transition-colors border border-gray-700"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+          {syncing ? 'Syncing PRs...' : 'Sync PR Status'}
+        </button>
       </div>
 
       <div className="flex-1 overflow-x-auto">
@@ -210,14 +240,28 @@ export default function Workspace() {
                               </button>
                             )}
                           </div>
-                          <a 
-                            href={card.url} 
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-blue-400 hover:text-blue-300 font-medium"
-                          >
-                            View on GitHub
-                          </a>
+                          <div className="flex items-center gap-3">
+                            {card.prUrl && (
+                              <a 
+                                href={card.prUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={`flex items-center text-xs font-medium ${card.prState === 'merged' ? 'text-purple-400 hover:text-purple-300' : 'text-emerald-400 hover:text-emerald-300'}`}
+                                title={`View Pull Request (${card.prState})`}
+                              >
+                                <GitFork className="h-3 w-3 mr-1" />
+                                PR #{card.prNumber}
+                              </a>
+                            )}
+                            <a 
+                              href={card.url} 
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+                            >
+                              View on GitHub
+                            </a>
+                          </div>
                         </div>
                       </div>
                     ))
