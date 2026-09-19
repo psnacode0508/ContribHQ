@@ -19,9 +19,23 @@ export default function Discover() {
   const [category, setCategory] = useState('');
   const [issueLabel, setIssueLabel] = useState('');
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [savedIssueIds, setSavedIssueIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
+
+  const fetchWorkspace = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/workspace', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        const ids = new Set<number>(data.map((card: any) => card.githubIssueId));
+        setSavedIssueIds(ids);
+      }
+    } catch (e) {
+      console.error("Failed to fetch workspace", e);
+    }
+  };
 
   const fetchIssues = async (searchQuery: string, lang: string, cat: string, label: string) => {
     setLoading(true);
@@ -55,8 +69,38 @@ export default function Discover() {
 
   // Initial load
   useEffect(() => {
+    fetchWorkspace();
     fetchIssues('', '', '', '');
   }, []);
+
+  const handleSave = async (issue: Issue) => {
+    try {
+      const res = await fetch('http://localhost:5000/api/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          githubIssueId: issue.id,
+          title: issue.title,
+          url: issue.url,
+          repository: issue.repository,
+          labels: issue.labels,
+          category: issue.category !== 'Other' ? issue.category : null,
+          language: language || null,
+        }),
+      });
+
+      if (res.ok) {
+        setSavedIssueIds(new Set([...savedIssueIds, issue.id]));
+      } else if (res.status === 409) {
+        setSavedIssueIds(new Set([...savedIssueIds, issue.id]));
+      } else {
+        alert("Failed to save issue");
+      }
+    } catch (e) {
+      alert("Failed to save issue");
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,20 +275,37 @@ export default function Discover() {
                 </h3>
               </div>
               
-              <div className="flex flex-wrap gap-2 mt-4 relative z-10">
-                {issue.labels.slice(0, 5).map((label) => (
-                  <span 
-                    key={label} 
-                    className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border ${getLabelColor(label)}`}
-                  >
-                    {label}
-                  </span>
-                ))}
-                {issue.labels.length > 5 && (
-                  <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-700 text-gray-300 border border-gray-600">
-                    +{issue.labels.length - 5}
-                  </span>
-                )}
+              <div className="flex flex-col gap-4 mt-4 relative z-10">
+                <div className="flex flex-wrap gap-2">
+                  {issue.labels.slice(0, 5).map((label) => (
+                    <span 
+                      key={label} 
+                      className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border ${getLabelColor(label)}`}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                  {issue.labels.length > 5 && (
+                    <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-700 text-gray-300 border border-gray-600">
+                      +{issue.labels.length - 5}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="border-t border-gray-700 pt-4 flex items-center justify-between">
+                  {savedIssueIds.has(issue.id) ? (
+                    <span className="text-sm font-medium text-green-400 flex items-center">
+                      Saved ✓
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleSave(issue)}
+                      className="text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      + Save to Workspace
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

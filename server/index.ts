@@ -259,6 +259,87 @@ app.get("/api/issues", async (req, res) => {
   }
 });
 
+// Workspace Endpoints
+
+// Save Issue
+app.post("/api/workspace", async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+  
+  const { githubIssueId, title, url, repository, labels, category, language } = req.body;
+  
+  try {
+    const card = await prisma.workspaceCard.create({
+      data: {
+        githubIssueId: Number(githubIssueId),
+        title,
+        url,
+        repository,
+        labels,
+        category,
+        language,
+        userId: req.session.userId,
+      }
+    });
+    res.json(card);
+  } catch(e: any) {
+    if (e.code === 'P2002') {
+      return res.status(409).json({ error: "Issue already saved" });
+    }
+    console.error("Save issue error:", e);
+    res.status(500).json({ error: "Failed to save issue" });
+  }
+});
+
+// List Workspace Issues
+app.get("/api/workspace", async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+  
+  try {
+    const cards = await prisma.workspaceCard.findMany({ 
+      where: { userId: req.session.userId }, 
+      orderBy: { updatedAt: "desc" } 
+    });
+    res.json(cards);
+  } catch(e) { 
+    res.status(500).json({ error: "Failed to fetch workspace" }); 
+  }
+});
+
+// Update Status
+app.patch("/api/workspace/:id", async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+  
+  const { status } = req.body;
+  
+  try {
+    const card = await prisma.workspaceCard.findUnique({ where: { id: req.params.id } });
+    if (!card || card.userId !== req.session.userId) return res.status(403).json({ error: "Forbidden" });
+    
+    const updated = await prisma.workspaceCard.update({ 
+      where: { id: req.params.id }, 
+      data: { status } 
+    });
+    res.json(updated);
+  } catch(e) { 
+    res.status(500).json({ error: "Failed to update status" }); 
+  }
+});
+
+// Delete Issue
+app.delete("/api/workspace/:id", async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+  
+  try {
+    const card = await prisma.workspaceCard.findUnique({ where: { id: req.params.id } });
+    if (!card || card.userId !== req.session.userId) return res.status(403).json({ error: "Forbidden" });
+    
+    await prisma.workspaceCard.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch(e) { 
+    res.status(500).json({ error: "Failed to delete" }); 
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });

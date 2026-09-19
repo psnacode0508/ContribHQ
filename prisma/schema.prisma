@@ -14,6 +14,34 @@ model User {
   displayName String?
   avatarUrl   String?
   email       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  workspaceCards WorkspaceCard[]
+}
+
+enum CardStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  MERGED
+}
+
+model WorkspaceCard {
+  id            String     @id @default(uuid())
+  githubIssueId Int
+  title         String
+  url           String
+  repository    String
+  labels        String[]
+  category      String?
+  language      String?
+  status        CardStatus @default(TODO)
+  
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([userId, githubIssueId])
 }

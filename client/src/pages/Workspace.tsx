@@ -1,25 +1,232 @@
-import { Briefcase } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { GitFork, Trash2, ArrowRight, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
+
+type CardStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'MERGED';
+
+interface WorkspaceCard {
+  id: string;
+  githubIssueId: number;
+  title: string;
+  url: string;
+  repository: string;
+  labels: string[];
+  category?: string;
+  language?: string;
+  status: CardStatus;
+  createdAt: string;
+}
+
+const COLUMNS: { id: CardStatus; title: string; color: string }[] = [
+  { id: 'TODO', title: 'To Do', color: 'border-gray-500' },
+  { id: 'IN_PROGRESS', title: 'In Progress', color: 'border-blue-500' },
+  { id: 'REVIEW', title: 'Review', color: 'border-yellow-500' },
+  { id: 'MERGED', title: 'Merged', color: 'border-purple-500' },
+];
 
 export default function Workspace() {
+  const [cards, setCards] = useState<WorkspaceCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchWorkspace();
+  }, []);
+
+  const fetchWorkspace = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('http://localhost:5000/api/workspace', {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error('Failed to fetch workspace');
+      const data = await res.json();
+      setCards(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (id: string, newStatus: CardStatus) => {
+    // Optimistic update
+    const previousCards = [...cards];
+    setCards(cards.map(c => c.id === id ? { ...c, status: newStatus } : c));
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/workspace/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) throw new Error('Failed to update status');
+    } catch (err) {
+      // Revert on error
+      setCards(previousCards);
+      alert('Failed to update status');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to remove this issue from your workspace?')) return;
+    
+    const previousCards = [...cards];
+    setCards(cards.filter(c => c.id !== id));
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/workspace/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error('Failed to delete issue');
+    } catch (err) {
+      setCards(previousCards);
+      alert('Failed to delete issue');
+    }
+  };
+
+  const getLabelColor = (labelName: string) => {
+    const text = labelName.toLowerCase();
+    if (text.includes('good first issue')) return 'bg-green-500/20 text-green-400 border-green-500/30';
+    if (text.includes('help wanted')) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    if (text.includes('bug')) return 'bg-red-500/20 text-red-400 border-red-500/30';
+    return 'bg-gray-700 text-gray-300 border-gray-600';
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl bg-red-900/20 border border-red-500/30 p-4">
+        <div className="flex items-center">
+          <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
+          <h3 className="text-sm font-medium text-red-400">Error loading workspace</h3>
+        </div>
+        <p className="mt-1 text-sm text-red-300">{error}</p>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <div className="mb-8">
+    <div className="pb-12 h-full flex flex-col">
+      <div className="mb-8 shrink-0">
         <h2 className="text-2xl font-bold leading-7 text-white sm:truncate sm:text-3xl sm:tracking-tight">
           My Workspace
         </h2>
         <p className="mt-1 text-sm text-gray-400">
-          Manage your contributions, track PRs, and organize tasks.
+          Track issues you are working on. Move them across the board as you progress.
         </p>
       </div>
 
-      <div className="rounded-xl bg-gray-800 border border-gray-700 p-12 flex flex-col items-center justify-center text-center">
-        <div className="rounded-full bg-purple-400/10 p-4 mb-4">
-          <Briefcase className="h-10 w-10 text-purple-400" />
+      <div className="flex-1 overflow-x-auto">
+        <div className="flex gap-6 min-w-max h-full pb-4">
+          {COLUMNS.map(col => {
+            const columnCards = cards.filter(c => c.status === col.id);
+            const colIndex = COLUMNS.findIndex(c => c.id === col.id);
+            const prevCol = colIndex > 0 ? COLUMNS[colIndex - 1] : null;
+            const nextCol = colIndex < COLUMNS.length - 1 ? COLUMNS[colIndex + 1] : null;
+
+            return (
+              <div key={col.id} className="w-80 flex flex-col bg-gray-900/50 rounded-xl border border-gray-800 p-4">
+                <div className={`flex items-center justify-between mb-4 pb-2 border-b-2 ${col.color}`}>
+                  <h3 className="font-semibold text-white">{col.title}</h3>
+                  <span className="text-xs font-medium bg-gray-800 text-gray-400 px-2 py-1 rounded-full">
+                    {columnCards.length}
+                  </span>
+                </div>
+                
+                <div className="flex-1 space-y-4 overflow-y-auto pr-1 custom-scrollbar">
+                  {columnCards.length === 0 ? (
+                    <div className="text-center py-8 text-sm text-gray-500 border border-dashed border-gray-800 rounded-lg">
+                      No issues here
+                    </div>
+                  ) : (
+                    columnCards.map(card => (
+                      <div key={card.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700 shadow-sm hover:border-gray-600 transition-colors group relative flex flex-col">
+                        <div className="flex items-start justify-between mb-2">
+                          <a 
+                            href={card.url} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="font-medium text-sm text-white hover:text-blue-400 transition-colors line-clamp-2"
+                          >
+                            {card.title}
+                          </a>
+                          <button 
+                            onClick={() => handleDelete(card.id)}
+                            className="text-gray-500 hover:text-red-400 transition-colors ml-2 opacity-0 group-hover:opacity-100 shrink-0"
+                            title="Remove from Workspace"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        
+                        <div className="flex items-center text-xs text-gray-400 mb-3 truncate">
+                          <GitFork className="h-3 w-3 mr-1 shrink-0" />
+                          <span className="truncate">{card.repository}</span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {card.category && card.category !== 'Other' && (
+                            <span className="inline-flex items-center rounded-sm bg-purple-400/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-400 ring-1 ring-inset ring-purple-400/30">
+                              {card.category}
+                            </span>
+                          )}
+                          {card.labels.slice(0, 2).map(label => (
+                            <span 
+                              key={label}
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-medium border ${getLabelColor(label)} truncate max-w-[120px]`}
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+
+                        <div className="mt-auto flex items-center justify-between border-t border-gray-700 pt-3">
+                          <div className="flex gap-2">
+                            {prevCol && (
+                              <button 
+                                onClick={() => handleStatusChange(card.id, prevCol.id)}
+                                className="p-1 rounded hover:bg-gray-700 text-gray-400 transition-colors"
+                                title={`Move to ${prevCol.title}`}
+                              >
+                                <ArrowLeft className="h-4 w-4" />
+                              </button>
+                            )}
+                            {nextCol && (
+                              <button 
+                                onClick={() => handleStatusChange(card.id, nextCol.id)}
+                                className="p-1 rounded hover:bg-gray-700 text-gray-400 transition-colors"
+                                title={`Move to ${nextCol.title}`}
+                              >
+                                <ArrowRight className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          <a 
+                            href={card.url} 
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+                          >
+                            View on GitHub
+                          </a>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <h3 className="mt-2 text-lg font-semibold text-white">Workspace Coming Soon</h3>
-        <p className="mt-1 text-sm text-gray-400 max-w-md">
-          Your personal contribution kanban board is under construction. Soon you will be able to track all your open source work here.
-        </p>
       </div>
     </div>
   );

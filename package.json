@@ -9,11 +9,16 @@
   "scripts": {
     "dev": "concurrently \"npm run dev -w client\" \"npm run dev -w server\"",
     "build": "npm run build --workspaces --if-present",
-    "generate": "prisma generate --schema=prisma/schema.prisma"
+    "generate": "prisma generate --schema=prisma/schema.prisma",
+    "migrate": "prisma migrate dev --name add_workspace_card"
   },
   "devDependencies": {
     "@prisma/client": "^5.22.0",
     "concurrently": "^10.0.5",
-    "prisma": "5"
+    "prisma": "^1.0.0"
+  },
+  "allowScripts": {
+    "@prisma/client": true,
+    "prisma": true
   }
 }
