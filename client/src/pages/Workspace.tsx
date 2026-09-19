@@ -400,8 +400,8 @@ export default function Workspace() {
                     </div>
                   </div>
 
-                  {setupData.hasDevContainer && (
-                    <div className="mt-6 pt-6 border-t border-gray-800">
+                  <div className="mt-6 pt-6 border-t border-gray-800">
+                    {setupData.hasDevContainer ? (
                       <div className="flex items-center justify-between bg-blue-900/20 border border-blue-500/30 p-4 rounded-lg">
                         <div>
                           <h4 className="text-sm font-medium text-blue-400 mb-1">Codespaces Supported</h4>
@@ -416,8 +416,19 @@ export default function Workspace() {
                           Open in Codespaces
                         </a>
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-lg flex items-start">
+                        <AlertCircle className="h-5 w-5 text-gray-500 mr-3 shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-300 mb-1">Codespaces Not Detected</h4>
+                          <p className="text-xs text-gray-400">
+                            This repository does not have a <code className="bg-gray-800 px-1 py-0.5 rounded border border-gray-700">.devcontainer</code> configuration. 
+                            Please use the local setup instructions above.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : null}
             </div>
