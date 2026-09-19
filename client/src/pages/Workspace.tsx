@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { GitFork, Trash2, ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { GitFork, Trash2, ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw, X, Terminal, Settings } from 'lucide-react';
 
 type CardStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'MERGED';
 
@@ -31,6 +31,34 @@ export default function Workspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+
+  // Setup Modal State
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
+  const [setupRepo, setSetupRepo] = useState('');
+  const [setupData, setSetupData] = useState<any>(null);
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState('');
+
+  const openSetupModal = async (repository: string) => {
+    setSetupRepo(repository);
+    setSetupModalOpen(true);
+    setSetupLoading(true);
+    setSetupError('');
+    setSetupData(null);
+    
+    try {
+      const res = await fetch(`http://localhost:5000/api/workspace/env-setup?repository=${repository}`, {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error('Failed to fetch setup instructions');
+      const data = await res.json();
+      setSetupData(data);
+    } catch (err: any) {
+      setSetupError(err.message);
+    } finally {
+      setSetupLoading(false);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -198,9 +226,19 @@ export default function Workspace() {
                           </button>
                         </div>
                         
-                        <div className="flex items-center text-xs text-gray-400 mb-3 truncate">
-                          <GitFork className="h-3 w-3 mr-1 shrink-0" />
-                          <span className="truncate">{card.repository}</span>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center text-xs text-gray-400 truncate">
+                            <GitFork className="h-3 w-3 mr-1 shrink-0" />
+                            <span className="truncate">{card.repository}</span>
+                          </div>
+                          <button 
+                            onClick={() => openSetupModal(card.repository)} 
+                            className="text-[10px] font-medium bg-gray-700/50 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded flex items-center transition-colors shrink-0 ml-2 border border-gray-600/50 hover:border-gray-500"
+                            title="Environment Setup"
+                          >
+                            <Terminal className="h-3 w-3 mr-1" />
+                            Setup
+                          </button>
                         </div>
 
                         <div className="flex flex-wrap gap-1.5 mb-4">
@@ -272,6 +310,120 @@ export default function Workspace() {
           })}
         </div>
       </div>
+
+      {/* Environment Setup Modal */}
+      {setupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-4 border-b border-gray-800 bg-gray-900/50">
+              <div className="flex items-center">
+                <Settings className="h-5 w-5 text-gray-400 mr-2" />
+                <h3 className="text-lg font-semibold text-white">Environment Setup</h3>
+              </div>
+              <button 
+                onClick={() => setSetupModalOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-400 mb-1">Repository</h4>
+                <a href={`https://github.com/${setupRepo}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 font-medium text-lg">
+                  {setupRepo}
+                </a>
+              </div>
+
+              {setupLoading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-4" />
+                  <p className="text-sm text-gray-400">Inspecting repository files...</p>
+                </div>
+              ) : setupError ? (
+                <div className="rounded-xl bg-red-900/20 border border-red-500/30 p-4">
+                  <div className="flex items-center">
+                    <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
+                    <h3 className="text-sm font-medium text-red-400">Failed to inspect repository</h3>
+                  </div>
+                  <p className="mt-1 text-sm text-red-300">{setupError}</p>
+                </div>
+              ) : setupData ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                      <div className="text-xs text-gray-400 mb-1">Detected Language</div>
+                      <div className="font-semibold text-white">{setupData.language}</div>
+                    </div>
+                    <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                      <div className="text-xs text-gray-400 mb-1">Package Manager</div>
+                      <div className="font-semibold text-white">{setupData.packageManager || 'None detected'}</div>
+                    </div>
+                  </div>
+
+                  {setupData.setupFiles && setupData.setupFiles.length > 0 && (
+                    <div>
+                      <div className="text-sm font-medium text-gray-300 mb-2">Detected Configuration Files</div>
+                      <div className="flex flex-wrap gap-2">
+                        {setupData.setupFiles.map((file: string) => (
+                          <span key={file} className="px-2 py-1 text-xs font-medium bg-gray-800 border border-gray-700 text-gray-300 rounded">
+                            {file}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <div className="text-sm font-medium text-gray-300">Local Setup Instructions</div>
+                    <div className="bg-black/50 p-4 rounded-lg border border-gray-800 font-mono text-sm text-green-400 overflow-x-auto">
+                      <div className="mb-2"># 1. Clone the repository</div>
+                      <div className="text-white mb-4">git clone https://github.com/{setupRepo}.git</div>
+                      
+                      <div className="mb-2"># 2. Enter the directory</div>
+                      <div className="text-white mb-4">cd {setupRepo.split('/')[1]}</div>
+                      
+                      {setupData.installCommand && (
+                        <>
+                          <div className="mb-2"># 3. Install dependencies</div>
+                          <div className="text-white mb-4">{setupData.installCommand}</div>
+                        </>
+                      )}
+                      
+                      {setupData.runCommand && (
+                        <>
+                          <div className="mb-2"># 4. Run the project</div>
+                          <div className="text-white">{setupData.runCommand}</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {setupData.hasDevContainer && (
+                    <div className="mt-6 pt-6 border-t border-gray-800">
+                      <div className="flex items-center justify-between bg-blue-900/20 border border-blue-500/30 p-4 rounded-lg">
+                        <div>
+                          <h4 className="text-sm font-medium text-blue-400 mb-1">Codespaces Supported</h4>
+                          <p className="text-xs text-blue-300/80">This repository contains a dev container configuration.</p>
+                        </div>
+                        <a 
+                          href={`https://github.com/codespaces/new?hide_repo_select=true&ref=main&repo=${setupRepo}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded transition-colors"
+                        >
+                          Open in Codespaces
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

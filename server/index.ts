@@ -364,6 +364,115 @@ app.post("/api/workspace/sync", async (req, res) => {
   }
 });
 
+// Detect Environment Setup
+app.get("/api/workspace/env-setup", async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+  if (!req.session.accessToken) return res.status(401).json({ error: "No GitHub token" });
+
+  const repository = req.query.repository as string;
+  if (!repository) return res.status(400).json({ error: "Missing repository" });
+
+  try {
+    const contentsUrl = `https://api.github.com/repos/${repository}/contents`;
+    const ghRes = await fetch(contentsUrl, {
+      headers: {
+        Authorization: `token ${req.session.accessToken}`,
+        Accept: "application/vnd.github.v3+json",
+        "User-Agent": "ContribHQ"
+      }
+    });
+
+    if (!ghRes.ok) {
+      if (ghRes.status === 404) return res.status(404).json({ error: "Repository not found" });
+      throw new Error(`GitHub API Error: ${ghRes.status}`);
+    }
+
+    const data = await ghRes.json();
+    if (!Array.isArray(data)) {
+      return res.status(400).json({ error: "Invalid repository contents" });
+    }
+
+    const files = data.map((item: any) => item.name);
+    
+    let language = "Unknown";
+    let packageManager = "";
+    let setupFiles: string[] = [];
+    let installCommand = "";
+    let runCommand = null;
+    let hasDevContainer = false;
+
+    if (data.some((item: any) => item.name === ".devcontainer" && item.type === "dir")) {
+      hasDevContainer = true;
+    }
+
+    if (files.includes("package.json")) {
+      language = "Node.js";
+      packageManager = "npm";
+      setupFiles.push("package.json");
+      installCommand = "npm install";
+      runCommand = "npm start";
+      
+      if (files.includes("yarn.lock")) {
+        packageManager = "yarn";
+        setupFiles.push("yarn.lock");
+        installCommand = "yarn install";
+        runCommand = "yarn start";
+      } else if (files.includes("pnpm-lock.yaml")) {
+        packageManager = "pnpm";
+        setupFiles.push("pnpm-lock.yaml");
+        installCommand = "pnpm install";
+        runCommand = "pnpm start";
+      }
+
+      if (files.includes(".nvmrc")) {
+        setupFiles.push(".nvmrc");
+      }
+    } else if (files.includes("requirements.txt")) {
+      language = "Python";
+      packageManager = "pip";
+      setupFiles.push("requirements.txt");
+      installCommand = "pip install -r requirements.txt";
+    } else if (files.includes("pyproject.toml")) {
+      language = "Python";
+      packageManager = "poetry (or modern pip)";
+      setupFiles.push("pyproject.toml");
+      installCommand = "pip install -e .";
+    } else if (files.includes("pom.xml")) {
+      language = "Java";
+      packageManager = "Maven";
+      setupFiles.push("pom.xml");
+      installCommand = "mvn install";
+    } else if (files.includes("go.mod")) {
+      language = "Go";
+      packageManager = "go modules";
+      setupFiles.push("go.mod");
+      installCommand = "go mod download";
+    } else if (files.includes("Cargo.toml")) {
+      language = "Rust";
+      packageManager = "Cargo";
+      setupFiles.push("Cargo.toml");
+      installCommand = "cargo build";
+    }
+
+    if (files.includes("Dockerfile")) {
+      setupFiles.push("Dockerfile");
+    }
+
+    res.json({
+      language,
+      packageManager,
+      setupFiles,
+      installCommand,
+      runCommand,
+      hasDevContainer
+    });
+
+  } catch (err) {
+    console.error("Env Setup error:", err);
+    res.status(500).json({ error: "Failed to detect environment" });
+  }
+});
+
 // List Workspace Issues
 app.get("/api/workspace", async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
