@@ -29,6 +29,7 @@ app.use(
 declare module "express-session" {
   interface SessionData {
     userId: string;
+    accessToken?: string;
   }
 }
 
@@ -103,6 +104,7 @@ app.get("/api/auth/github/callback", async (req, res) => {
 
     // 4. Set session
     req.session.userId = user.id;
+    req.session.accessToken = accessToken;
 
     // 5. Redirect to frontend
     res.redirect(FRONTEND_URL);
@@ -142,6 +144,77 @@ app.post("/api/auth/logout", (req, res) => {
     res.clearCookie("connect.sid");
     res.json({ success: true });
   });
+});
+
+// Get GitHub Issues
+app.get("/api/issues", async (req, res) => {
+  if (!req.session.userId || !req.session.accessToken) {
+    return res.status(401).json({ error: "Unauthorized or missing GitHub token" });
+  }
+
+  const query = req.query.q ? String(req.query.q) : "";
+  const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+  const perPage = 20;
+
+  // Construct GitHub Search Query
+  // is:issue is:open no:assignee label:"good first issue" OR label:"help wanted"
+  const baseQuery = 'is:issue is:open no:assignee label:"good first issue",label:"help wanted"';
+  const searchQuery = query ? `${query} ${baseQuery}` : baseQuery;
+  
+  const searchUrl = new URL("https://api.github.com/search/issues");
+  searchUrl.searchParams.append("q", searchQuery);
+  searchUrl.searchParams.append("sort", "created");
+  searchUrl.searchParams.append("order", "desc");
+  searchUrl.searchParams.append("per_page", String(perPage));
+  searchUrl.searchParams.append("page", String(page));
+
+  try {
+    const ghResponse = await fetch(searchUrl.toString(), {
+      headers: {
+        Authorization: `Bearer ${req.session.accessToken}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+
+    if (!ghResponse.ok) {
+      const errorData = await ghResponse.json();
+      console.error("GitHub API Error:", errorData);
+      return res.status(ghResponse.status).json({ error: "Failed to fetch issues from GitHub" });
+    }
+
+    const data = await ghResponse.json();
+    
+    // Normalize data
+    const issues = data.items.map((item: any) => {
+      // Extract repo name from repository_url
+      // Example: https://api.github.com/repos/facebook/react
+      const repoUrlParts = item.repository_url.split("/");
+      const repoName = repoUrlParts.slice(-2).join("/");
+
+      // GitHub search doesn't return the exact language in the issue item often, 
+      // but labels might contain language tags. We will just pass available info.
+      return {
+        id: item.id,
+        title: item.title,
+        url: item.html_url,
+        repository: repoName,
+        repositoryUrl: item.repository_url.replace("api.github.com/repos", "github.com"),
+        labels: item.labels.map((l: any) => l.name),
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+      };
+    });
+
+    res.json({
+      totalCount: data.total_count,
+      items: issues,
+      page,
+      hasMore: data.total_count > page * perPage
+    });
+  } catch (error) {
+    console.error("GitHub Search Error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
 app.listen(PORT, () => {
