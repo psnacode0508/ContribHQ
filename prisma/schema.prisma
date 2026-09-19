@@ -19,6 +19,7 @@ model User {
   workspaceCards WorkspaceCard[]
 }
 
+
 enum CardStatus {
   TODO
   IN_PROGRESS
