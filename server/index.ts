@@ -146,6 +146,20 @@ app.post("/api/auth/logout", (req, res) => {
   });
 });
 
+function categorizeIssue(issue: any): string {
+  const text = `${issue.title || ""} ${issue.body || ""} ${issue.labels ? issue.labels.map((l:any)=>l.name).join(" ") : ""}`.toLowerCase();
+  
+  if (/\b(bug|fix|error|crash)\b/.test(text) || (issue.labels && issue.labels.some((l:any) => l.name.toLowerCase().includes('bug')))) return 'Bug Fix';
+  if (/\b(docs?|documentation|readme|typo)\b/.test(text) || (issue.labels && issue.labels.some((l:any) => l.name.toLowerCase().includes('doc')))) return 'Documentation';
+  if (/\b(test|testing|jest|cypress|mocha|vitest|playwright)\b/.test(text)) return 'Testing';
+  if (/\b(docker|kubernetes|k8s|ci\/cd|actions|workflow|deploy|devops)\b/.test(text)) return 'DevOps';
+  if (/\b(sql|postgres|mysql|mongodb|redis|database|db|prisma|orm)\b/.test(text)) return 'Database';
+  if (/\b(frontend|ui|ux|react|vue|angular|svelte|css|html|tailwind|component)\b/.test(text) || (issue.labels && issue.labels.some((l:any) => l.name.toLowerCase().includes('frontend')))) return 'Frontend';
+  if (/\b(backend|api|server|express|django|flask|spring|node|rest|graphql)\b/.test(text) || (issue.labels && issue.labels.some((l:any) => l.name.toLowerCase().includes('backend')))) return 'Backend';
+  
+  return 'Other';
+}
+
 // Get GitHub Issues
 app.get("/api/issues", async (req, res) => {
   if (!req.session.userId || !req.session.accessToken) {
@@ -154,12 +168,41 @@ app.get("/api/issues", async (req, res) => {
 
   const query = req.query.q ? String(req.query.q) : "";
   const page = req.query.page ? parseInt(String(req.query.page)) : 1;
+  const language = req.query.language ? String(req.query.language) : "";
+  const category = req.query.category ? String(req.query.category) : "";
+  const issueLabel = req.query.label ? String(req.query.label) : "";
   const perPage = 20;
 
   // Construct GitHub Search Query
-  // is:issue is:open no:assignee label:"good first issue" OR label:"help wanted"
-  const baseQuery = 'is:issue is:open no:assignee label:"good first issue",label:"help wanted"';
-  const searchQuery = query ? `${query} ${baseQuery}` : baseQuery;
+  let searchTerms = ["is:issue", "is:open", "no:assignee"];
+  
+  if (issueLabel) {
+    searchTerms.push(`label:"${issueLabel}"`);
+  } else {
+    searchTerms.push('(label:"good first issue" OR label:"help wanted")');
+  }
+
+  if (language) {
+    searchTerms.push(`language:"${language}"`);
+  }
+
+  // Map category to GitHub search terms if provided
+  if (category) {
+    const cat = category.toLowerCase();
+    if (cat === 'frontend') searchTerms.push('(react OR vue OR angular OR svelte OR css OR html OR ui OR frontend)');
+    else if (cat === 'backend') searchTerms.push('(api OR server OR express OR django OR flask OR spring OR node OR backend)');
+    else if (cat === 'database') searchTerms.push('(sql OR postgres OR mysql OR mongodb OR redis OR database)');
+    else if (cat === 'devops') searchTerms.push('(docker OR kubernetes OR actions OR deploy OR devops)');
+    else if (cat === 'testing') searchTerms.push('(test OR jest OR cypress OR mocha OR vitest OR playwright)');
+    else if (cat === 'documentation') searchTerms.push('(docs OR documentation OR readme)');
+    else if (cat === 'bug fix') searchTerms.push('(bug OR fix OR error)');
+  }
+
+  if (query) {
+    searchTerms.push(query);
+  }
+
+  const searchQuery = searchTerms.join(" ");
   
   const searchUrl = new URL("https://api.github.com/search/issues");
   searchUrl.searchParams.append("q", searchQuery);
@@ -184,15 +227,13 @@ app.get("/api/issues", async (req, res) => {
 
     const data = await ghResponse.json();
     
-    // Normalize data
+    // Normalize and categorize data
     const issues = data.items.map((item: any) => {
-      // Extract repo name from repository_url
-      // Example: https://api.github.com/repos/facebook/react
       const repoUrlParts = item.repository_url.split("/");
       const repoName = repoUrlParts.slice(-2).join("/");
+      
+      const detectedCategory = categorizeIssue(item);
 
-      // GitHub search doesn't return the exact language in the issue item often, 
-      // but labels might contain language tags. We will just pass available info.
       return {
         id: item.id,
         title: item.title,
@@ -200,6 +241,7 @@ app.get("/api/issues", async (req, res) => {
         repository: repoName,
         repositoryUrl: item.repository_url.replace("api.github.com/repos", "github.com"),
         labels: item.labels.map((l: any) => l.name),
+        category: detectedCategory,
         createdAt: item.created_at,
         updatedAt: item.updated_at,
       };

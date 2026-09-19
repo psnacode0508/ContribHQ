@@ -8,22 +8,32 @@ interface Issue {
   repository: string;
   repositoryUrl: string;
   labels: string[];
+  category: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export default function Discover() {
   const [query, setQuery] = useState('');
+  const [language, setLanguage] = useState('');
+  const [category, setCategory] = useState('');
+  const [issueLabel, setIssueLabel] = useState('');
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
 
-  const fetchIssues = async (searchQuery: string) => {
+  const fetchIssues = async (searchQuery: string, lang: string, cat: string, label: string) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`http://localhost:5000/api/issues?q=${encodeURIComponent(searchQuery)}`, {
+      const url = new URL('http://localhost:5000/api/issues');
+      if (searchQuery) url.searchParams.append('q', searchQuery);
+      if (lang) url.searchParams.append('language', lang);
+      if (cat) url.searchParams.append('category', cat);
+      if (label) url.searchParams.append('label', label);
+
+      const res = await fetch(url.toString(), {
         credentials: 'include'
       });
       
@@ -45,12 +55,12 @@ export default function Discover() {
 
   // Initial load
   useEffect(() => {
-    fetchIssues('');
+    fetchIssues('', '', '', '');
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchIssues(query);
+    fetchIssues(query, language, category, issueLabel);
   };
 
   const getLabelColor = (labelName: string) => {
@@ -74,24 +84,68 @@ export default function Discover() {
       </div>
 
       <div className="mb-8">
-        <form onSubmit={handleSearch} className="relative max-w-2xl">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-            <Search className="h-5 w-5 text-gray-400" aria-hidden="true" />
+        <form onSubmit={handleSearch} className="space-y-4">
+          <div className="relative">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+              <Search className="h-5 w-5 text-gray-400" aria-hidden="true" />
+            </div>
+            <input
+              type="text"
+              className="block w-full rounded-xl border-0 bg-gray-800/50 py-4 pl-12 pr-24 text-white shadow-sm ring-1 ring-inset ring-gray-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
+              placeholder="Search by keywords..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="absolute inset-y-2 right-2 flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 transition-colors"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
+            </button>
           </div>
-          <input
-            type="text"
-            className="block w-full rounded-xl border-0 bg-gray-800/50 py-4 pl-12 pr-24 text-white shadow-sm ring-1 ring-inset ring-gray-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
-            placeholder="Search by language or framework (e.g., 'react', 'python', 'javascript')"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="absolute inset-y-2 right-2 flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 transition-colors"
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
-          </button>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <select
+              value={language}
+              onChange={(e) => { setLanguage(e.target.value); fetchIssues(query, e.target.value, category, issueLabel); }}
+              className="block w-full rounded-lg border-0 bg-gray-800 py-2.5 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-gray-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="">All Languages</option>
+              <option value="javascript">JavaScript</option>
+              <option value="typescript">TypeScript</option>
+              <option value="python">Python</option>
+              <option value="java">Java</option>
+              <option value="c++">C++</option>
+              <option value="go">Go</option>
+              <option value="rust">Rust</option>
+            </select>
+            
+            <select
+              value={category}
+              onChange={(e) => { setCategory(e.target.value); fetchIssues(query, language, e.target.value, issueLabel); }}
+              className="block w-full rounded-lg border-0 bg-gray-800 py-2.5 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-gray-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="">All Categories</option>
+              <option value="Frontend">Frontend</option>
+              <option value="Backend">Backend</option>
+              <option value="Database">Database</option>
+              <option value="DevOps">DevOps</option>
+              <option value="Testing">Testing</option>
+              <option value="Documentation">Documentation</option>
+              <option value="Bug Fix">Bug Fix</option>
+            </select>
+
+            <select
+              value={issueLabel}
+              onChange={(e) => { setIssueLabel(e.target.value); fetchIssues(query, language, category, e.target.value); }}
+              className="block w-full rounded-lg border-0 bg-gray-800 py-2.5 pl-3 pr-10 text-white shadow-sm ring-1 ring-inset ring-gray-700 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="">Good First Issue / Help Wanted</option>
+              <option value="good first issue">Good First Issue Only</option>
+              <option value="help wanted">Help Wanted Only</option>
+            </select>
+          </div>
         </form>
       </div>
 
@@ -145,16 +199,26 @@ export default function Discover() {
             >
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <a 
-                    href={issue.repositoryUrl} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="flex items-center text-sm font-medium text-gray-400 hover:text-blue-400 transition-colors"
-                  >
-                    <GitFork className="mr-1.5 h-4 w-4" />
-                    {issue.repository}
-                  </a>
-                  <span className="text-xs text-gray-500 whitespace-nowrap">
+                  <div className="flex items-center gap-3">
+                    <a 
+                      href={issue.repositoryUrl} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="flex items-center text-sm font-medium text-gray-400 hover:text-blue-400 transition-colors truncate max-w-[200px]"
+                      title={issue.repository}
+                    >
+                      <GitFork className="mr-1.5 h-4 w-4 shrink-0" />
+                      <span className="truncate">{issue.repository}</span>
+                    </a>
+                    
+                    {issue.category !== 'Other' && (
+                      <span className="inline-flex items-center rounded-md bg-purple-400/10 px-2 py-1 text-xs font-medium text-purple-400 ring-1 ring-inset ring-purple-400/30">
+                        {issue.category}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <span className="text-xs text-gray-500 whitespace-nowrap shrink-0 ml-2">
                     {new Date(issue.createdAt).toLocaleDateString()}
                   </span>
                 </div>
