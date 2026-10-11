@@ -13,6 +13,9 @@ export default function Navbar() {
   const isDiscover = pathname === "/";
   const isDashboard = pathname === "/dashboard";
 
+  const isAuthenticated = status === "authenticated" || !!session;
+  const isLoading = status === "loading";
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -27,7 +30,7 @@ export default function Navbar() {
             </span>
           </Link>
 
-          {/* Desktop Navigation Links */}
+          {/* Navigation Links */}
           <nav className="flex items-center gap-1.5 sm:gap-2">
             <Link
               href="/"
@@ -60,9 +63,12 @@ export default function Navbar() {
 
         {/* Auth / User Actions */}
         <div className="flex items-center gap-3">
-          {status === "loading" ? (
-            <div className="w-8 h-8 rounded-full bg-zinc-800 animate-pulse" />
-          ) : session?.user ? (
+          {isLoading ? (
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-zinc-800 animate-pulse" />
+              <div className="w-20 h-8 rounded-lg bg-zinc-800 animate-pulse hidden sm:block" />
+            </div>
+          ) : isAuthenticated && session?.user ? (
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Profile Link to Dashboard */}
               <Link
@@ -94,17 +100,17 @@ export default function Navbar() {
                 title="Sign out"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Sign out</span>
+                <span className="hidden sm:inline">Sign Out</span>
               </button>
             </div>
           ) : (
             <button
               type="button"
-              onClick={() => signIn("github")}
+              onClick={() => signIn("github", { callbackUrl: "/" })}
               className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm shadow-blue-500/25 transition-all hover:shadow-blue-500/40 active:scale-95"
             >
               <Github className="w-4 h-4" />
-              <span>Sign in with GitHub</span>
+              <span>Sign In with GitHub</span>
             </button>
           )}
         </div>
